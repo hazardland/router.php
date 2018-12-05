@@ -10,6 +10,7 @@ class app
     public static $active;
 
     private static $route = [];
+    private static $find = [];
     private static $default;
     public static $request;
 
@@ -213,7 +214,7 @@ class app
     public function name ($name)
     {
         $this->name = $name;
-        //Route::name ($name, $this);
+        self::$find [$name] = $this;
         return $this;
     }
 
@@ -232,4 +233,55 @@ class app
         }
         return $result;
     }
+
+    public static function url ($path, $args=[], $locale=null)
+    {
+        if (is_string($args))
+        {
+            $locale = $args;
+            $args[] = null;
+        }
+        if (isset(self::$find[$path]))
+        {
+            $result = self::$find[$path]->path;
+            if (is_array($args) && count($args)>0)
+            {
+                foreach ($args as $key=>$value)
+                {
+                    $result = str_replace('{'.$key.'}', $value, $result);
+                }
+            }
+            $path = $result;
+        }
+        $resource = ($locale!==null?$locale.'/':(self::locale()!==null?self::locale().'/':'')).$path;
+        return dirname($_SERVER['SCRIPT_NAME']).($resource!==null?'/'.$resource:'');
+    }
+
+    public static function locale ()
+    {
+        return self::$locale;
+    }
+
+    public static function view ($__name, $__values=[])
+    {
+        if (is_array($__values) && count($__values))
+        {
+            foreach ($__values as $__key => &$__value)
+            {
+                ${$__key} = $__value;
+            }
+        }
+        include self::$config['path']['view'].$__name.'.php';
+    }
+
+    public static function script ($src)
+    {
+        return "<script src=\"".self::url($src)."\"></script>";
+    }
+    public static function style ($href)
+    {
+        return "<link rel=\"stylesheet\" href=\"".self::url($href)."\" />";
+    }
+
+
 }
