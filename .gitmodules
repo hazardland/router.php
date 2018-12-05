@@ -1,0 +1,3 @@
+[submodule "lib/debug"]
+	path = lib/debug
+	url = https://github.com/hazardland/debug.php.git

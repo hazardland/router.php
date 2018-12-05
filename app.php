@@ -7,27 +7,33 @@ class app
         'locale' => ['en']
     ];
 
-    private static $route;
+    public static $active;
+
+    private static $route = [];
     private static $default;
     public static $request;
 
     public static $locale;
 
+    public $name;
     public $path;
     public $callback;
     public $method;
+    public $pattern;
+    public $type = [];
+    public $input = [];
 
     public function __construct ($path, $callback, $method=null)
     {
         $this->path = $path;
         $this->callback = $callback;
-        $this->method = $method;
+        $this->method = strtolower($method);
     }
     public static function add ($path, $callback, $method=null)
     {
         $route = new app ($path, $callback, $method);
         self::$route[] = $route;
-        if ($action->path=='/')
+        if ($path=='/')
         {
             self::$default = $route;
         }
@@ -57,7 +63,7 @@ class app
         }
         if ($method===null)
         {
-            $method = $_SERVER['REQUEST_METHOD'];
+            $method = strtolower($_SERVER['REQUEST_METHOD']);
         }
         if ($query!==null)
         {
@@ -98,39 +104,132 @@ class app
             'locale' => $locale,
             'method' => $method
         ];
-    }
-        public function active (Request $request)
+        debug (self::$request);
+        debug (self::$route);
+        foreach (self::$route as $route)
         {
-            //debug ($this->method);
-            //debug($request->getMethod());
-            //debug ($this->getPattern(), $this->path);
-            if ($this->method!==null && $this->method!=$request->getMethod())
+            if ($route->active(self::$request))
             {
-                return false;
+                debug ($route);
+                self::$active = $route;
+                self::$active->execute(self::$request);
+                break;
             }
-
-            if (
-                ($request->getPath()==='/' && $this->path==='/') ||
-                preg_match($this->getPattern(), $request->getPath())===1
-               )
-            {
-                //Maybe filter compiration must be before regex match?
-                //If it will be cost effective
-                if (is_array($this->filters) && count($this->filters))
-                {
-                    foreach ($this->filters as $name => $options)
-                    {
-                        $filter = Route::getFilter($name);
-                        if (!$filter($this, $request, $options))
-                        {
-                            return false;
-                        }
-                    }
-                }
-                return true;
-            }
+        }
+    }
+    public function active ($request)
+    {
+        //debug($this);
+        //debug ($this->method);
+        //debug($request->getMethod());
+        //debug ($this->getPattern(), $this->path);
+        if ($this->method!==null && $this->method!=$request['method'])
+        {
+            debug($request);
             return false;
         }
 
+        if (
+            ($request['path']==='/' && $this->path==='/') ||
+            preg_match($this->pattern(), $request['path'])===1
+           )
+        {
+            return true;
+        }
+        return false;
+    }
 
+    private function pattern ()
+    {
+        if ($this->pattern===null)
+        {
+            //first escape regex chars
+            $pattern = preg_quote ($this->path,'/');
+
+            //find variables in routes
+            $matches = [];
+            preg_match_all('/(\\\\\{[a-zA-Z0-9_]+\\\\\})+/', $pattern, $matches);
+
+            //debug ($pattern);
+            if (isset($matches[0]) && count($matches[0]))
+            {
+                foreach ($matches[0] as $match)
+                {
+                    $name = substr($match,2,-2);
+                    $pattern = str_replace ($match,self::regex(isset($this->type[$name])?$this->type[$name]:''),$pattern);
+                    $this->input[] = $name;
+                }
+            }
+            //debug ($matches, $this->path);
+            $this->pattern = '/^'.$pattern.'$/';
+        }
+        return $this->pattern;
+    }
+    public function input ($path)
+    {
+        if ($path==='/' && $this->path==='/')
+        {
+            return [];
+        }
+        $matches = [];
+        preg_match_all($this->pattern(), $path, $matches, PREG_SET_ORDER);
+        if (!isset($matches[0]) || count($matches[0])<=1) return [];
+        $result = [];
+        foreach ($matches[0] as $key=>$value)
+        {
+            if ($key==0) continue;
+            $result[$this->input[$key-1]] = $value;
+        }
+        return $result;
+    }
+    private static function regex ($type)
+    {
+        if ($type=='int' || $type=='integer')
+        {
+            return '([0-9]+)';
+        }
+        if ($type=='float')
+        {
+            return '([0-9\.]+)';
+        }
+        if ($type=='bool' || $type=='boolean')
+        {
+            return '(0|false|False|FALSE|1|true|True|TRUE)';
+        }
+        if ($type=='email')
+        {
+            return '([^\.][a-zA-Z0-9_\-.]+@[a-zA-Z0-9\-]+\.[a-zA-Z0-9\-.]+[^\.])';
+        }
+        return '([a-zA-Z0-9@\-\.\;\,\_]+)';
+    }
+
+    public function type ($name, $type)
+    {
+        $this->reset ();
+        $this->type[$name] = $type;
+        return $this;
+    }
+
+    public function name ($name)
+    {
+        $this->name = $name;
+        //Route::name ($name, $this);
+        return $this;
+    }
+
+    private function reset ()
+    {
+        $this->type = [];
+        $this->pattern = null;
+    }
+
+    public function execute ($request)
+    {
+        $result = null;
+        if (is_object($this->callback))
+        {
+            $result = call_user_func_array ($this->callback, $this->input($request['path']));
+        }
+        return $result;
+    }
 }
