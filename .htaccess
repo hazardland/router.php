@@ -1,6 +1,10 @@
+DirectoryIndex index.php
+
 AddDefaultCharset utf-8
 
 RewriteEngine On
+
+RewriteBase /~vzardiashvili/fortunejack/router/
 
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
